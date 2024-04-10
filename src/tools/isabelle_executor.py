@@ -108,6 +108,9 @@ class IsabelleExecutor:
     assms_regex = r"assms_(\d+):"
     assms_regex_match = re.compile(assms_regex)
 
+    # Matches a hole
+    hole_regex = "? hole"
+
     # Proof automation tactics: [tactics from LYRA] + `algebra`
     auto_tactics = ["auto", "simp", "blast", "fastforce", "force", "eval", "presburger", "sos", "arith", "linarith", "(auto simp: field_simps)", "algebra"]
 
@@ -140,6 +143,7 @@ class IsabelleExecutor:
         self.proof_context : ProofContext = None
         self.curr_lemma_name : typing.Optional[str] = None
         self.curr_lemma : typing.Optional[str] = ""
+        self.curr_answer_guess : int = 0
         self._proof_running = False
         self._top_level = True
         self.local_theorem_lemma_description: typing.OrderedDict[str, str] = OrderedDict()
@@ -331,7 +335,8 @@ class IsabelleExecutor:
         self.line_num += 1
         try:
             stmt = self._run_stmt_on_isabelle_server(stmt, proof_search_mode)
-        except:
+        except Exception as e:
+            print(e)
             if proof_search_mode:
                 if not self.suppress_error_log:
                     logger.error(f"Got an exception while running '{stmt}' on isabelle. File name: {self.main_file}")
@@ -537,8 +542,12 @@ class IsabelleExecutor:
             begin_clause = IsabelleExecutor.begin_theory_match.findall(self.buffer)
         elif not self._proof_running:
             self.buffer += stmt + '\n' # Add current line to buffer
+
+            # Make a guess for the answer if it isn't present
+            subst_thm = self.buffer.replace(self.hole_regex, str(self.curr_answer_guess))
+            
             # If the action succeeds, we have a new lemma
-            description = self.pisa_env.step(start_state, self.buffer, end_state)
+            description = self.pisa_env.step(start_state, subst_thm, end_state)
             if not description.startswith('Step error:'):
                 last_thm_details = IsabelleExecutor.theorem_match.findall(self.buffer)
 
@@ -568,6 +577,9 @@ class IsabelleExecutor:
         # In proof mode. Execute tactics
         if self._proof_running or begin_clause:
             stmt = f"{self.buffer}{stmt.strip()}"
+
+            # Make a guess for the answer if it isn't present
+            stmt = stmt.replace(self.hole_regex, str(self.curr_answer_guess))
 
             # Throw an error if "sorry" is used, which is not allowed
             # Note that this is a fairly simple/optimistic way of handling it
