@@ -32,6 +32,7 @@ class ProofAction(Action):
         EXIT = 'EXIT'
         NONE = 'NONE'
         INFORMAL = 'INFORMAL'
+        GUESS_ANS = 'GUESS_ANS'
 
         @staticmethod
         def get_order(action_type: 'ProofAction.ActionType'):
@@ -45,6 +46,8 @@ class ProofAction(Action):
                 return 4
             elif action_type == ProofAction.ActionType.GET_DFNS_THMS:
                 return 3
+            elif action_type == ProofAction.ActionType.GUESS_ANS:
+                return 2
             else:
                 return 0
 
@@ -93,6 +96,12 @@ class ProofAction(Action):
             assert len(self.kwargs["tactics"]) > 0, f"kwargs['tactics'] must be a non-empty list"
             for tactic in self.kwargs["tactics"]:
                 assert isinstance(tactic, str), f"kwargs['tactics'] must be of type str, not {type(tactic)}"
+        elif self.action_type == ProofAction.ActionType.GUESS_ANS:
+            assert "guess" in self.kwargs, f"kwargs must contain a 'guess' key for action_type {self.action_type}"
+            try:
+                _ = int(self.kwargs["guess"])
+            except:
+                assert False, f"kwargs['guess'] must be of type int (numerical) for now"
         elif self.action_type == ProofAction.ActionType.INFORMAL:
             assert "proof" in self.kwargs, f"kwargs must contain a 'proof' key for action_type {self.action_type}"
         else:

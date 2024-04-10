@@ -169,7 +169,13 @@ class ProofEnv(Env):
 
     def reset(self):
         self.current_proof_depth = 0
+
+        save_cur_goal = 0
         if self._dynamic_proof_executor is not None:
+            # Save current guess for the answer to apply when resetting
+            if self.dynamic_proof_executor_callback.language == ProofAction.Language.ISABELLE:
+                save_cur_goal = self._dynamic_proof_executor.curr_answer_guess
+        
             try:
                 self._dynamic_proof_executor.__exit__(None, None, None)
             except Exception:
@@ -187,6 +193,10 @@ class ProofEnv(Env):
                     self._re_ranker.reindex(all_lemmas)
         # if isinstance(self._dynamic_proof_executor, DynamicLeanProofExecutor):
         #     self._always_retrieve_thms = False # Lean does not support retrieval of theorems as of now
+
+        if self.dynamic_proof_executor_callback.language == ProofAction.Language.ISABELLE:
+            self._dynamic_proof_executor.curr_answer_guess = save_cur_goal
+
         self._dynamic_proof_executor.__enter__()
         self._history.clear()
         self._p_tree = ProofTree()
@@ -212,6 +222,8 @@ class ProofEnv(Env):
         self._history.append((state_before, action, None, 0.0, False, info))
         if action.action_type == ProofAction.ActionType.RUN_TACTIC:
             self._run_tactic(history_idx)
+        elif action.action_type == ProofAction.ActionType.GUESS_ANS:
+            self._guess_ans(history_idx)
         elif action.action_type == ProofAction.ActionType.GET_DFNS_THMS:
             self._get_dfns_thms(history_idx)
         elif action.action_type == ProofAction.ActionType.BACKTRACK:
@@ -489,6 +501,24 @@ class ProofEnv(Env):
         done = self.done
         self._history[history_idx] = (state, action, current_proof_state, reward, done, env_info)
 
+    def _guess_ans(self, history_idx: int = None):
+        assert self._loaded, "Env not loaded, call reset() first"
+        history_idx = len(self._history) - 1 if history_idx is None else history_idx
+        state, action, current_proof_state, reward, done, env_info = self._history[history_idx]
+        assert action.action_type == ProofAction.ActionType.GUESS_ANS, "Action must be of type GUESS_ANS"
+
+        guess = action.kwargs["guess"]
+        self._dynamic_proof_executor.change_goal(guess)
+        self._reset_and_restore_history()
+        
+        env_info.progress = ProgressState.STATE_CHANGED
+        env_info.error_message = "Set new answer successfully"
+        reward = 0.0
+        current_proof_state = self.state
+        done = self.done
+
+        self._history[history_idx] = (state, action, current_proof_state, reward, done, env_info)
+
     def _foward_to_lemma_proof(self):
         assert self._loaded, "Env not loaded, call reset() first"
         lemma_found = False
@@ -560,6 +590,9 @@ if __name__ == "__main__":
             inp = input("Enter tactic(s) (';' separated): ")
             inp = inp.split(';')
             return ProofAction(action_type, language, tactics=inp)
+        elif action_type == ProofAction.ActionType.GUESS_ANS:
+            inp = input("Enter guess for the answer (numerical): ")
+            return ProofAction(action_type, language, guess=inp)
         elif action_type == ProofAction.ActionType.GET_DFNS_THMS or action_type == ProofAction.ActionType.BACKTRACK or action_type == ProofAction.ActionType.EXIT:
             return ProofAction(action_type, language)
         else:
@@ -588,11 +621,11 @@ if __name__ == "__main__":
     elif inp == 'isabelle':
         proof_exec_callback = ProofExecutorCallback(
             project_folder="data/test",
-            file_path="data/test/SimpleAlgebra.thy",
+            file_path="data/test/SimpleFindProblems.thy",
             language=ProofAction.Language.ISABELLE,
             use_hammer=ProofAction.HammerMode.AUTO
         )
-        theorem_name = "sqrt_comp"
+        theorem_name = "gsm8k"
         language = ProofAction.Language.ISABELLE
         always_retrieve_thms = False
     else:

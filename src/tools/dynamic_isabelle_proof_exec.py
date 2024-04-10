@@ -225,3 +225,6 @@ class DynamicProofExecutor(IsabelleExecutor):
             self.current_state = self.line_num_to_state[self.line_num]
             cancelled_some_tactics = True
         return cancelled_some_tactics
+
+    def change_goal(self, guess: int):
+        self.curr_answer_guess = guess
